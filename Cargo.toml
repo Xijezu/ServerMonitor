@@ -1,0 +1,6 @@
+[package]
+name = "server_monitor"
+version = "0.1.0"
+authors = ["Xijezu <marcel@xijezu.com>"]
+
+[dependencies]
