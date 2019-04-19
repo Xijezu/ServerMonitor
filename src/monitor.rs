@@ -5,6 +5,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::{thread, time};
 
+use database;
 use rc4;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -32,6 +33,7 @@ pub struct Monitor {
     servers: Vec<ServerRegion>,
     update_timer: i32,
     save_list: String,
+    db_connection: String,
 }
 
 impl Default for Monitor {
@@ -40,6 +42,7 @@ impl Default for Monitor {
             servers: Vec::new(),
             update_timer: 0,
             save_list: String::new(),
+            db_connection: String::new(),
         }
     }
 }
@@ -67,6 +70,7 @@ impl Monitor {
             .parse()
             .unwrap();
         self.save_list = section.get("server.save_path").unwrap().to_string();
+        self.db_connection = section.get("database.connection").unwrap().to_string();
         self.parse_json();
     }
 
@@ -97,6 +101,9 @@ impl Monitor {
         ];
 
         loop {
+            let db = database::Database {
+                connection_string: self.db_connection.clone(),
+            };
             // Honestly, I have no idea if this is the correct way
             // to get the server as mutable, but hey, it works...
             for mut servers in self.servers.iter_mut() {
@@ -128,6 +135,7 @@ impl Monitor {
                                 Ok(n) => {
                                     if n >= 14 {
                                         parse_result(client_buffer[0..n].to_vec(), &mut server);
+                                        db.do_query(&server.name, server.players as i32);
                                     }
                                 }
                                 Err(e) => {
