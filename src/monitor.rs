@@ -79,43 +79,47 @@ impl Monitor {
         loop {
             for servers in &self.servers {
                 for server in &servers.servers {
-                    let mut decipher = rc4::RC4Cipher::default();
-                    decipher.init(String::from("}h79q~B%al;k'y $E"));
-
-                    let mut stream = TcpStream::connect((server.ip.as_str(), server.port)).unwrap();
-                    let mut input_stream = stream.try_clone().unwrap();
-                    let mut client_buffer = [0u8; 1024];
-
-                    let output_stream = &mut stream;
-                    output_stream.write(&version_pct).unwrap();
-                    output_stream.flush().unwrap();
-
-                    match input_stream.read(&mut client_buffer) {
-                        Ok(n) => {
-                            if n > 0 {
-                                let mut tmp = Vec::new();
-                                for i in 0..n {
-                                    tmp.push(client_buffer[i]);
+                    let addr: String = format!("{}:{}", server.ip, server.port);
+                    match TcpStream::connect_timeout(
+                        &addr.parse().unwrap(),
+                        time::Duration::from_secs(1),
+                    ) {
+                        Ok(mut stream) => {
+                            stream.write(&version_pct).unwrap();
+                            let mut client_buffer = [0u8; 1024];
+                            stream
+                                .set_read_timeout(Some(time::Duration::from_secs(2)))
+                                .unwrap();
+                            match stream.read(&mut client_buffer) {
+                                Ok(n) => {
+                                    self.parse_result(client_buffer[0..n].to_vec(), &server.name);
                                 }
-                                decipher.do_cipher(&mut tmp);
-
-                                // Ty stackoverflow
-                                let mut i = unsafe {
-                                    std::mem::transmute::<[u8; 4], u32>([
-                                        tmp[11], tmp[12], tmp[13], tmp[14],
-                                    ])
+                                Err(e) => {
+                                    println!("Failed to receive data: {}", e);
                                 }
-                                .to_le()
-                                    ^ 0xADADADAD;
-                                println!("Players online at {}: {}", server.name, i);
                             }
                         }
-                        _ => (),
+                        Err(e) => {
+                            println!("Failed to connect to server {}: {}", server.name, e);
+                        }
                     }
                 }
             }
-            thread::sleep(time::Duration::from_secs(5));
+            thread::sleep(time::Duration::from_secs(60));
         }
+    }
+
+    fn parse_result(&self, mut result: Vec<u8>, name: &String) {
+        let mut decipher = rc4::RC4Cipher::default();
+        decipher.init(String::from("}h79q~B%al;k'y $E"));
+        decipher.do_cipher(&mut result);
+        // Ty stackoverflow
+        let i = unsafe {
+            std::mem::transmute::<[u8; 4], u32>([result[11], result[12], result[13], result[14]])
+        }
+        .to_le()
+            ^ 0xADADADAD;
+        println!("Players online at {}: {}", name, i);
     }
 
     fn parse_json(&mut self) {
