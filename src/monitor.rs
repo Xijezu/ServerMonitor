@@ -71,11 +71,11 @@ impl Monitor {
     }
 
     pub fn start(&mut self) {
-        // That packet is somehow whack when using the 9.5.2 struct, so... yeah, let's just hardcode it
         let version_pct_v1 = vec![
             70u8, 12, 65, 1, 25, 37, 65, 186, 248, 211, 155, 115, 0, 99, 74, 88, 53, 72, 213, 23,
             125, 122, 77, 72, 231, 33, 159,
         ];
+        // That packet is somehow whack when using the 9.5.2 struct, so... yeah, let's just hardcode it
         let version_pct_v2 = vec![
             70u8, 13, 65, 1, 24, 37, 67, 186, 248, 211, 155, 115, 0, 99, 74, 88, 53, 72, 213, 23,
             125, 122, 77, 72, 231, 33, 159, 98, 220, 160, 3, 128, 70, 9, 225, 137, 107, 195, 53,
@@ -137,7 +137,7 @@ impl Monitor {
                     }
                 }
             }
-            thread::sleep(time::Duration::from_secs(60));
+            thread::sleep(time::Duration::from_secs((self.update_timer * 60) as u64));
         }
     }
 
