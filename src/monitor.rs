@@ -1,4 +1,5 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -6,7 +7,7 @@ use std::{thread, time};
 
 use rc4;
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 struct Server {
     name: String,
     ip: String,
@@ -15,14 +16,14 @@ struct Server {
     players: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 struct ServerRegion {
-    // name: String, // Enable when you need it
-    // auth: String, // Enable when you need it
+    name: String,
+    auth: String,
     servers: Vec<Server>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 struct JSONHelperStruct {
     region: Vec<ServerRegion>,
 }
@@ -53,7 +54,6 @@ fn parse_result(mut result: Vec<u8>, server: &mut Server) {
     }
     .to_le()
         ^ 0xADADADAD;
-    println!("Players online at {}: {}", server.name, server.players);
 }
 
 impl Monitor {
@@ -71,11 +71,13 @@ impl Monitor {
     }
 
     pub fn start(&mut self) {
+        // This is already encrypted (use rc4 with a clean state to decrypt)
         let version_pct_v1 = vec![
             70u8, 12, 65, 1, 25, 37, 65, 186, 248, 211, 155, 115, 0, 99, 74, 88, 53, 72, 213, 23,
             125, 122, 77, 72, 231, 33, 159,
         ];
         // That packet is somehow whack when using the 9.5.2 struct, so... yeah, let's just hardcode it
+        // This is already encrypted (use rc4 with a clean state to decrypt)
         let version_pct_v2 = vec![
             70u8, 13, 65, 1, 24, 37, 67, 186, 248, 211, 155, 115, 0, 99, 74, 88, 53, 72, 213, 23,
             125, 122, 77, 72, 231, 33, 159, 98, 220, 160, 3, 128, 70, 9, 225, 137, 107, 195, 53,
@@ -95,6 +97,8 @@ impl Monitor {
         ];
 
         loop {
+            // Honestly, I have no idea if this is the correct way
+            // to get the server as mutable, but hey, it works...
             for mut servers in self.servers.iter_mut() {
                 for mut server in servers.servers.iter_mut() {
                     let addr: String = format!("{}:{}", server.ip, server.port);
@@ -137,8 +141,18 @@ impl Monitor {
                     }
                 }
             }
+            self.save_file();
             thread::sleep(time::Duration::from_secs((self.update_timer * 60) as u64));
         }
+    }
+
+    fn save_file(&mut self) {
+        let x = JSONHelperStruct {
+            region: self.servers.to_vec(),
+        };
+
+        let value = serde_json::to_string(&x).unwrap();
+        fs::write(&self.save_list, value).expect("Cannot save to file!");
     }
 
     fn parse_json(&mut self) {
@@ -146,7 +160,7 @@ impl Monitor {
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
         let json: serde_json::Value =
-            serde_json::from_str(&data).expect("JSON was not well-formatted");
+            serde_json::from_str(&data).expect("Error: JSON was not well-formatted");
 
         let x: JSONHelperStruct = serde_json::from_value(json).unwrap();
         self.servers = x.region;
