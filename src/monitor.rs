@@ -1,4 +1,3 @@
-#![allow(unused_variables)]
 use serde::Deserialize;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -12,12 +11,14 @@ struct Server {
     name: String,
     ip: String,
     port: u16,
+    packet_version: u8,
+    players: u32,
 }
 
 #[derive(Deserialize)]
 struct ServerRegion {
-    name: String,
-    auth: String,
+    // name: String, // Enable when you need it
+    // auth: String, // Enable when you need it
     servers: Vec<Server>,
 }
 
@@ -42,6 +43,19 @@ impl Default for Monitor {
     }
 }
 
+fn parse_result(mut result: Vec<u8>, server: &mut Server) {
+    let mut decipher = rc4::RC4Cipher::default();
+    decipher.init(String::from("}h79q~B%al;k'y $E"));
+    decipher.do_cipher(&mut result);
+    // Ty stackoverflow
+    server.players = unsafe {
+        std::mem::transmute::<[u8; 4], u32>([result[11], result[12], result[13], result[14]])
+    }
+    .to_le()
+        ^ 0xADADADAD;
+    println!("Players online at {}: {}", server.name, server.players);
+}
+
 impl Monitor {
     pub fn init(&mut self) {
         let conf = ini::Ini::load_from_file("monitor.ini").unwrap();
@@ -56,9 +70,13 @@ impl Monitor {
         self.parse_json();
     }
 
-    pub fn start(&self) {
+    pub fn start(&mut self) {
         // That packet is somehow whack when using the 9.5.2 struct, so... yeah, let's just hardcode it
-        let version_pct = vec![
+        let version_pct_v1 = vec![
+            70u8, 12, 65, 1, 25, 37, 65, 186, 248, 211, 155, 115, 0, 99, 74, 88, 53, 72, 213, 23,
+            125, 122, 77, 72, 231, 33, 159,
+        ];
+        let version_pct_v2 = vec![
             70u8, 13, 65, 1, 24, 37, 67, 186, 248, 211, 155, 115, 0, 99, 74, 88, 53, 72, 213, 23,
             125, 122, 77, 72, 231, 33, 159, 98, 220, 160, 3, 128, 70, 9, 225, 137, 107, 195, 53,
             176, 170, 34, 240, 237, 240, 72, 89, 91, 232, 12, 45, 8, 24, 43, 13, 34, 14, 146, 119,
@@ -77,22 +95,36 @@ impl Monitor {
         ];
 
         loop {
-            for servers in &self.servers {
-                for server in &servers.servers {
+            for mut servers in self.servers.iter_mut() {
+                for mut server in servers.servers.iter_mut() {
                     let addr: String = format!("{}:{}", server.ip, server.port);
                     match TcpStream::connect_timeout(
                         &addr.parse().unwrap(),
                         time::Duration::from_secs(1),
                     ) {
                         Ok(mut stream) => {
-                            stream.write(&version_pct).unwrap();
+                            match server.packet_version {
+                                1 => {
+                                    stream.write(&version_pct_v1).unwrap();
+                                    () // Dont ask
+                                }
+                                2 => {
+                                    stream.write(&version_pct_v2).unwrap();
+                                    () // Dont ask
+                                }
+                                _ => (),
+                            };
+
                             let mut client_buffer = [0u8; 1024];
                             stream
                                 .set_read_timeout(Some(time::Duration::from_secs(2)))
                                 .unwrap();
+
                             match stream.read(&mut client_buffer) {
                                 Ok(n) => {
-                                    self.parse_result(client_buffer[0..n].to_vec(), &server.name);
+                                    if n >= 14 {
+                                        parse_result(client_buffer[0..n].to_vec(), &mut server);
+                                    }
                                 }
                                 Err(e) => {
                                     println!("Failed to receive data: {}", e);
@@ -107,19 +139,6 @@ impl Monitor {
             }
             thread::sleep(time::Duration::from_secs(60));
         }
-    }
-
-    fn parse_result(&self, mut result: Vec<u8>, name: &String) {
-        let mut decipher = rc4::RC4Cipher::default();
-        decipher.init(String::from("}h79q~B%al;k'y $E"));
-        decipher.do_cipher(&mut result);
-        // Ty stackoverflow
-        let i = unsafe {
-            std::mem::transmute::<[u8; 4], u32>([result[11], result[12], result[13], result[14]])
-        }
-        .to_le()
-            ^ 0xADADADAD;
-        println!("Players online at {}: {}", name, i);
     }
 
     fn parse_json(&mut self) {
