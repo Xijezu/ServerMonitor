@@ -111,7 +111,7 @@ impl Monitor {
                     let addr: String = format!("{}:{}", server.ip, server.port);
                     match TcpStream::connect_timeout(
                         &addr.parse().unwrap(),
-                        time::Duration::from_secs(1),
+                        time::Duration::from_secs(5),
                     ) {
                         Ok(mut stream) => {
                             match server.packet_version {
@@ -128,7 +128,7 @@ impl Monitor {
 
                             let mut client_buffer = [0u8; 1024];
                             stream
-                                .set_read_timeout(Some(time::Duration::from_secs(2)))
+                                .set_read_timeout(Some(time::Duration::from_secs(10)))
                                 .unwrap();
 
                             match stream.read(&mut client_buffer) {

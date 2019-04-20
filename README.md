@@ -48,4 +48,6 @@ A server monitor, collecting the player count from multiple servers at once - wr
   [monitor]
 server.update_timer = 1 # In minutes
 server.save_path = "/var/www/test/sample.json"
+database.connection = "mysql://username:password@ip_address:port"
+# Example: database.connection = "mysql://root:password@localhost:3306"
 ```
